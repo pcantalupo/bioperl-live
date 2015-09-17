@@ -226,6 +226,11 @@ sub new {
     defined $div        && $self->division($div);
     defined $dbh        && $self->db_handle($dbh);
     
+    # Making an administrative decision to override this behavior, particularly
+    # for optimization reasons (if it works to cache it up front, why not?
+    # Please trust your implementations to get it right)
+    
+    # Original note:
     # deprecated and will issue a warning when method called,
     # eventually to be removed completely as option
     defined $parent_id  && $self->parent_id($parent_id);
@@ -396,14 +401,16 @@ sub ncbi_taxid {
            parent_taxon_id() is a synonym of this method.
  Returns : value of parent_id (a scalar)
  Args    : none
- Status  : deprecated
 
 =cut
 
 sub parent_id {
     my $self = shift;
     if (@_) {
-        $self->warn("You can no longer set the parent_id - use ancestor() instead");
+        $self->{parent_id} = shift;
+    }
+    if (defined $self->{parent_id}) {
+        return $self->{parent_id}
     }
     my $ancestor = $self->ancestor() || return;
     return $ancestor->id;
@@ -411,6 +418,26 @@ sub parent_id {
 
 *parent_taxon_id = \&parent_id;
 
+=head2 trusted_parent_id
+
+ Title   : trusted_parent_id
+ Usage   : $taxon->trusted_parent_id()
+ Function: If the parent_id is explicitly set, trust it
+ Returns : simple boolean value (whether or not it has been set)
+ Args    : none
+ Notes   : Previously, the parent_id method was to be deprecated in favor of
+           using ancestor(). However this removes one key optimization point,
+           namely when an implementation has direct access to the taxon's
+           parent ID when retrieving the information for the taxon ID.  This
+           method is in place so implementations can choose to (1) check whether
+           the parent_id is set and (2) trust that the implementation (whether
+           it is self or another implementation) set the parent_id correctly.
+
+=cut
+
+sub trusted_parent_id {
+    return defined $_[0]->{parent_id};
+}
 
 =head2 genetic_code
 
@@ -526,6 +553,7 @@ sub ancestor {
     my $dbh = $self->db_handle;
     #*** could avoid the db lookup if we knew our current id was definitely
     #    information from the db...
+
     my $definitely_from_dbh = $self->_get_similar_taxon_from_db($self);
     return $dbh->ancestor($definitely_from_dbh);
 }
